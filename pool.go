@@ -1,6 +1,7 @@
 package pool
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -20,6 +21,7 @@ type IPool interface {
 	UpdateWithTimeout(time.Duration) (int, int)
 	Acquire() *lua.LState
 	AcquireWithTimeout(time.Duration) (*lua.LState, error)
+	AcquireWithContext(context.Context) (*lua.LState, error)
 	Release(*lua.LState)
 	TryRelease(*lua.LState) error
 }
@@ -127,6 +129,18 @@ func (p *Pool) AcquireWithTimeout(to time.Duration) (*lua.LState, error) {
 		return vm, nil
 	case <-c:
 		return nil, errors.New("timeout")
+	}
+}
+
+func (p *Pool) AcquireWithContext(ctx context.Context) (*lua.LState, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case vm := <-p.pool:
+		return vm, nil
 	}
 }
 
