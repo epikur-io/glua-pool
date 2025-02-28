@@ -24,6 +24,7 @@ type IPool interface {
 	AcquireWithContext(context.Context) (*lua.LState, error)
 	Release(*lua.LState)
 	TryRelease(*lua.LState) error
+	TryReleaseWithContext(context.Context, *lua.LState) error
 }
 
 // ensure interface is satisfied
@@ -163,17 +164,29 @@ func (p *Pool) Release(vm *lua.LState) {
 // if vm is nil a new vm gets created on the fly
 func (p *Pool) TryRelease(vm *lua.LState) error {
 	if vm == nil {
-		select {
-		case p.pool <- p.createVM():
-		default:
-			return ErrFailedToReleaseVM
-		}
-		return nil
+		vm = p.createVM()
 	}
 	select {
 	case p.pool <- vm:
 	default:
 		return ErrFailedToReleaseVM
+	}
+	return nil
+}
+
+// Try to release a vm to the pool (non-blocking)
+// if vm is nil a new vm gets created on the fly
+func (p *Pool) TryReleaseWithContext(ctx context.Context, vm *lua.LState) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if vm == nil {
+		vm = p.createVM()
+	}
+	select {
+	case p.pool <- vm:
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 	return nil
 }
